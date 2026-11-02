@@ -1,7 +1,11 @@
-# ç«¯åˆ°ç«¯éªŒè¯ç”¨çš„éš”ç¦» DSH_HOME / ä¾èµ–ç›®å½•ï¼Œä¸è¿›ç‰ˆæœ¬åº“
+# End-to-end test harness (isolated DSH_HOME / dependency dirs), never committed
 .e2e-home/
 .e2e-store/
 node_modules/
 
-# pnpm ÁÙÊ±ĞéÄâ´æ´¢£¨¸ôÀë°²×°Ê±²úÉú£©
+# pnpm virtual store created by isolated installs
 .pnpm-store/
+
+# npm cache and pack artifacts
+.npm-cache/
+*.tgz

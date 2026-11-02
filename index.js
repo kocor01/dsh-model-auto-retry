@@ -43,7 +43,7 @@
  * 目录内的依赖树。需要的能力（构造用户消息、生成 id）用 Node 内置模块实现，
  * 见 `continueMessage()`。
  *
- * @module @local/dsh-model-auto-retry
+ * @module dsh-model-auto-retry
  */
 
 import { randomUUID } from 'node:crypto'

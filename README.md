@@ -33,15 +33,22 @@ DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 provider 的 `maxRetrie
 
 ## 安装
 
-### 一条命令从 GitHub 装（推荐）
+### 从 npm 安装（推荐）
+
+```powershell
+dsh plugin --profile desktop add dsh-model-auto-retry
+```
+
+`dsh plugin` 把参数透传给 pnpm，所以 npm 上的包可以像普通依赖一样装。`desktop` 换成你的
+profile 名（`dsh --help` 会列出可用 profile）。
+
+### 一条命令从 GitHub 装
 
 ```powershell
 dsh plugin --profile desktop add "github:kocor01/dsh-model-auto-retry"
 ```
 
-`dsh plugin` 把参数透传给 pnpm，仓库根有 `package.json`，所以不需要 `#path:` 之类的子目录语法。
-`desktop` 换成你的 profile 名（`dsh --help` 会列出可用 profile）。
-
+仓库根有 `package.json`，不需要 `#path:` 之类的子目录语法。
 **私有仓库**需要先配好 git 凭据（`gh auth login` + `gh auth setup-git`），或用 SSH 形式：
 
 ```powershell
@@ -66,9 +73,9 @@ dsh plugin --profile desktop add ".\dsh-model-auto-retry"
 
 ### 装完确认
 
-安装会在 profile 的 `bundle` 列表里加一行，并通过仓库根的 `cordis.patch.yml` 在 profile
+安装会在 profile 的 `bundle` 列表里加一行，并通过包自带的 `cordis.patch.yml` 在 profile
 根部插入插件行。确认它真的挂上了：`cordis_inspect_query` → host / `Config` / `listConfigs`，
-传 `{"name": "@local/dsh-model-auto-retry"}`。该行 `status` 显示 `absent` 是正常的 ——
+传 `{"name": "dsh-model-auto-retry"}`。该行 `status` 显示 `absent` 是正常的 ——
 本插件不导出 `Config` schema（没有设置表单），不是没挂载。
 
 注意 desktop profile 由 Electron 应用独占，`dsh --profile desktop --dump-config` 会报
@@ -77,11 +84,12 @@ dsh plugin --profile desktop add ".\dsh-model-auto-retry"
 ### 升级与卸载
 
 ```powershell
-# 升级：装 GitHub 的重跑 add；本地目录装的用 git pull。都需要重启 DSH 才会重新加载模块。
-dsh plugin --profile desktop add "github:kocor01/dsh-model-auto-retry"
+# 升级：npm 装的用 update，GitHub 装的重跑 add，本地目录装的用 git pull。
+# 三种方式都需要重启 DSH 才会重新加载模块。
+dsh plugin --profile desktop update dsh-model-auto-retry
 
 # 卸载
-dsh plugin --profile desktop remove @local/dsh-model-auto-retry
+dsh plugin --profile desktop remove dsh-model-auto-retry
 ```
 
 `plugin_manager` 的 `remove_bundle` 效果相同。

@@ -296,7 +296,7 @@ function continueMessage(text) {
 ```yaml
 - insert:
     - id: model-auto-retry
-      name: '@local/dsh-model-auto-retry'
+      name: 'dsh-model-auto-retry'
       config:
         mode: hybrid              # hybrid | in-loop | continue | off
         rateLimitCodes: ['RATE_LIMIT']
@@ -383,12 +383,12 @@ D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
 
 ```json
 {
-  "name": "@local/dsh-model-auto-retry",
+  "name": "dsh-model-auto-retry",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": { ".": "./index.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
-  "files": ["index.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
+  "files": ["index.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md", "LICENSE"],
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }
 ```
@@ -398,11 +398,11 @@ D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
 ```yaml
 - insert:
     - id: model-auto-retry
-      name: '@local/dsh-model-auto-retry'
+      name: 'dsh-model-auto-retry'
       config: { mode: hybrid }
 ```
 
-安装：`plugin_manager` → `install_bundle`，`target` 传仓库根的绝对路径 `D:\code\dsh-model-auto-retry`；命令行等价写法 `dsh plugin --profile desktop add "<仓库根或 github:owner/repo>"`。安装会写 profile 的 `package.json` / `cordis.patch.yml`，**不要手改 profile**；装完用 `cordis_inspect_list` + `Config.listConfigs` 确认行已激活，而不是看进程日志。
+安装：`plugin_manager` → `install_bundle`，`target` 传仓库根的绝对路径 `D:\code\dsh-model-auto-retry`；命令行可选 `dsh plugin --profile desktop add dsh-model-auto-retry`（npm）或 `...add "<仓库根或 github:owner/repo>"`。安装会写 profile 的 `package.json` / `cordis.patch.yml`，**不要手改 profile**；装完用 `cordis_inspect_list` + `Config.listConfigs` 确认行已激活，而不是看进程日志。
 
 依赖策略：插件代码**不 import 任何 `@deepseek-ai/*` 包**（profile 安装的包无法解析 dsh 安装目录内的依赖树；模板同样采用零依赖写法）。代价是需要手写一个 `createUserMessage` 等价物（第 6.5 节），收益是安装与升级零耦合。
 

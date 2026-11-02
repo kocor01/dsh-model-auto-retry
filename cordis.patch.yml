@@ -6,7 +6,7 @@
 # config 里的每一项都可省略，默认值见 index.js 的 DEFAULTS。
 - insert:
     - id: model-auto-retry
-      name: '@local/dsh-model-auto-retry'
+      name: 'dsh-model-auto-retry'
       config:
         # hybrid：先原地重试（不中断），达到上限后再自动补发续跑消息。
         mode: hybrid
