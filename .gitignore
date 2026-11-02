@@ -1,0 +1,7 @@
+# 端到端验证用的隔离 DSH_HOME / 依赖目录，不进版本库
+.e2e-home/
+.e2e-store/
+node_modules/
+
+# pnpm ��ʱ����洢�����밲װʱ������
+.pnpm-store/

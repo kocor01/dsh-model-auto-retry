@@ -1,0 +1,12 @@
+# dsh-model-auto-retry 的 Loader 补丁：在 profile 根部插入一行 Host 插件。
+#
+# 为什么不直接写进 profile 的 cordis.patch.yml：那条路径属于用户，升级/重装会被覆盖；
+# 由 bundle 自带补丁、通过 plugin_manager 安装，才能在升级后保留。
+#
+# config 里的每一项都可省略，默认值见 index.js 的 DEFAULTS。
+- insert:
+    - id: model-auto-retry
+      name: '@local/dsh-model-auto-retry'
+      config:
+        # hybrid：先原地重试（不中断），达到上限后再自动发「继续」。
+        mode: continue
