@@ -367,19 +367,19 @@ export function apply(ctx, rawConfig) {
 ## 9. 目录结构与安装
 
 ```
-D:\code\dsh-model-auto-retry\
+D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
+├─ package.json                    # dsh.bundle.patch 指向 cordis.patch.yml
+├─ cordis.patch.yml
+├─ index.js
+├─ locale\{en.json,zh.json}
+├─ icon.svg
+├─ README.md
 ├─ docs\技术方案-dsh-model-auto-retry.md
-├─ tools\read-session-log.mjs          # 解压并统计会话日志（验证用，已就绪）
-└─ package\
-   ├─ package.json
-   ├─ cordis.patch.yml
-   ├─ index.js
-   ├─ locale\{en.json,zh.json}
-   ├─ icon.svg
-   └─ README.md
+├─ test\{unit.test.mjs, mock-429-server.mjs, e2e-overlay*.yml}
+└─ tools\read-session-log.mjs       # 解压并统计会话日志（验证用）
 ```
 
-`package/package.json`：
+`package.json`：
 
 ```json
 {
@@ -393,7 +393,7 @@ D:\code\dsh-model-auto-retry\
 }
 ```
 
-`package/cordis.patch.yml`：
+`cordis.patch.yml`：
 
 ```yaml
 - insert:
@@ -402,7 +402,7 @@ D:\code\dsh-model-auto-retry\
       config: { mode: hybrid }
 ```
 
-安装：`plugin_manager` → `install_bundle`，`target` 传 `D:\code\dsh-model-auto-retry\package`。安装会写 profile 的 `package.json` / `cordis.patch.yml`，**不要手改 profile**；装完用 `cordis_inspect_list` + `Config.listConfigs` 确认行已激活，而不是看进程日志。
+安装：`plugin_manager` → `install_bundle`，`target` 传仓库根的绝对路径 `D:\code\dsh-model-auto-retry`；命令行等价写法 `dsh plugin --profile desktop add "<仓库根或 github:owner/repo>"`。安装会写 profile 的 `package.json` / `cordis.patch.yml`，**不要手改 profile**；装完用 `cordis_inspect_list` + `Config.listConfigs` 确认行已激活，而不是看进程日志。
 
 依赖策略：插件代码**不 import 任何 `@deepseek-ai/*` 包**（profile 安装的包无法解析 dsh 安装目录内的依赖树；模板同样采用零依赖写法）。代价是需要手写一个 `createUserMessage` 等价物（第 6.5 节），收益是安装与升级零耦合。
 
@@ -494,11 +494,12 @@ D:\code\dsh-model-auto-retry\
 
 | 文件 | 说明 |
 | --- | --- |
-| `package/index.js` | 全部实现（约 620 行，含详细注释），零 `@deepseek-ai/*` 依赖 |
-| `package/cordis.patch.yml` | 在 profile 根部插入 `model-auto-retry` 行 |
-| `package/README.md` | 安装、配置、验证、排障 |
-| `test/unit.test.mjs` | 27 个用例，假 ctx 驱动两层与全部分支 |
+| `index.js` | 全部实现（约 630 行，含详细注释），零 `@deepseek-ai/*` 依赖 |
+| `cordis.patch.yml` | 在 profile 根部插入 `model-auto-retry` 行 |
+| `README.md` | 安装、配置、验证、排障 |
+| `test/unit.test.mjs` | 28 个用例，假 ctx 驱动两层与全部分支 |
 | `test/mock-429-server.mjs` | OpenAI 兼容假 429 服务 |
+| `test/e2e-overlay*.yml` | 端到端用的三个 Loader 覆盖层 |
 | `tools/read-session-log.mjs` | 解压多帧 zstd 会话日志并统计事件 |
 
 ### 与设计稿的偏差（实现时发现并修正）

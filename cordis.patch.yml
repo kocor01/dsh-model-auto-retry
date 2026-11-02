@@ -9,4 +9,4 @@
       name: '@local/dsh-model-auto-retry'
       config:
         # hybrid：先原地重试（不中断），达到上限后再自动发「继续」。
-        mode: continue
+        mode: hybrid

@@ -1,0 +1,42 @@
+{
+  "name": "@local/dsh-model-auto-retry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Auto-recover DSH agents interrupted by model rate limits (HTTP 429): retry the failed request in place, then send an automatic 如果任务未完成，请继续执行 follow-up.",
+  "type": "module",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "bundle",
+    "rate-limit",
+    "429",
+    "retry",
+    "agent"
+  ],
+  "homepage": "https://github.com/kocor01/dsh-model-auto-retry#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kocor01/dsh-model-auto-retry.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kocor01/dsh-model-auto-retry/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

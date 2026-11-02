@@ -12,7 +12,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { apply } from '../package/index.js'
+import { apply } from '../index.js'
 
 /* ------------------------------------------------------------------------- *
  * 测试脚手架
