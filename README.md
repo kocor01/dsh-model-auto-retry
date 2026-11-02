@@ -31,14 +31,71 @@ DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 provider 的 `maxRetrie
 
 ## 安装
 
+插件本体在仓库的 `package/` 子目录里（仓库根是文档与测试），所以从 GitHub 安装要用 pnpm 的
+`#path:` 指定子目录。
+
+### 方式 A：一条命令直接装（推荐）
+
 ```powershell
-# 用 DSH 的 plugin_manager install_bundle，target 传包目录绝对路径：
-#   <repo>\package
-# 或命令行：
-dsh plugin --profile desktop add "<repo>\package"
+dsh plugin --profile desktop add "github:kocor01/dsh-model-auto-retry#path:/package"
 ```
 
-安装会在 profile 的 bundle 列表里加一行，并通过包自带的 `package/cordis.patch.yml` 在 profile 根部插入插件行。
+`dsh plugin` 把参数透传给 pnpm；`github:owner/repo#path:/子目录` 是 pnpm 官方的
+[从 git 仓库子目录安装](https://pnpm.io/10.x/package-sources#install-from-a-subdirectory-of-a-git-repository)写法。
+`desktop` 换成你的 profile 名（`dsh --help` 会列出可用 profile）。
+
+**私有仓库**：pnpm 用 git 克隆，需要先配好凭据。任选其一：
+
+```powershell
+gh auth login          # 然后让 git 复用 gh 的凭据
+gh auth setup-git
+
+# 或者直接用 SSH 形式
+dsh plugin --profile desktop add "git+ssh://git@github.com/kocor01/dsh-model-auto-retry.git#path:/package"
+```
+
+### 方式 B：先克隆再装本地目录
+
+离线环境、要改代码、或者本机 git 凭据没配好时用这条：
+
+```powershell
+git clone https://github.com/kocor01/dsh-model-auto-retry.git
+dsh plugin --profile desktop add ".\dsh-model-auto-retry\package"
+```
+
+这是本地目录安装：profile 里记的是一个指向 `<克隆目录>\package` 的链接，`git pull` 之后代码立刻是新的。
+
+### 方式 C：在 DSH 界面里装
+
+`plugin_manager` → `install_bundle`，`target` 传克隆目录下 `package` 的**绝对路径**，例如
+`D:\code\dsh-model-auto-retry\package`。
+
+### 装完确认
+
+安装会在 profile 的 `bundle` 列表里加一行，并通过包自带的 `package/cordis.patch.yml` 在 profile
+根部插入插件行。确认它真的挂上了：
+
+```
+cordis_inspect_query → host / Config / listConfigs → {"name": "@local/dsh-model-auto-retry"}
+```
+
+该行 `status` 显示 `absent` 是正常的 —— 插件不导出 `Config` schema（没有设置表单），不是没挂载。
+
+### 升级
+
+```powershell
+# 方式 A 装的：重跑同一条命令，pnpm 会重新解析 main 的最新提交
+dsh plugin --profile desktop add "github:kocor01/dsh-model-auto-retry#path:/package"
+
+# 方式 B/C 装的：拉代码即可（装的是目录链接）
+git pull
+```
+
+两种方式都需要**重启 DSH** 才会重新加载模块 —— 运行中的进程持有的是激活时的 JS 版本。
+
+### 卸载
+
+`plugin_manager` 的 `remove_bundle`，或 `dsh plugin --profile desktop remove @local/dsh-model-auto-retry`。
 
 ## 配置
 
