@@ -1,0 +1,29 @@
+# 对照组覆盖层：与 e2e-overlay.yml 完全相同，但把插件关掉。
+#
+# 用来证明「能跑完」确实归因于插件：同一个假服务、同一个 prompt，
+# 关掉插件后应当以 RATE_LIMIT 报错退出。
+- id: llm-pi-ai
+  config:
+    providers:
+      mock:
+        displayName: mock
+        apiKeyEnv: MOCK_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8123/v1
+        retryPolicy:
+          mode: normal
+          maxRetries: 1
+          backoff:
+            initialDelayMs: 50
+            maxDelayMs: 200
+        models:
+          - id: mock-1
+            name: mock-1
+            contextWindow: 32768
+- id: agent-default-model
+  config:
+    provider: mock
+    model: mock-1
+- id: model-auto-retry
+  config:
+    mode: off

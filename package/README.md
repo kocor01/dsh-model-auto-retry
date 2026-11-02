@@ -3,7 +3,7 @@
 让 DSH 的 Agent 在模型请求被限流（HTTP 429）时**不中断**，无人值守也能把长任务跑完。
 
 - 第一层：请求失败后**原地重试**（不结束 turn），用 `Retry-After` / 指数退避等额度窗口过去。
-- 第二层：如果重试确实用尽、Agent 已经中断，自动发送一条「继续」把任务接上。
+- 第二层：如果重试确实用尽、Agent 已经中断，自动发送一条「如果任务未完成，请继续执行」把任务接上。
 
 两层都只在 **429 / `RATE_LIMIT`** 上生效；配额耗尽、鉴权失败等「重试也不会变好」的错误保持原样，
 交给人工处理。
@@ -24,14 +24,14 @@ DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 `retryPolicy.maxRetries
                      不能 → 轮到我们
   └─ 本插件第一层：是 429 吗？→ 等 Retry-After/退避 → 返回 { kind: 'retry' } → 循环原地重试
                      不是 429，或达到 maxInLoopRetries → 放行，让 turn 按原逻辑结束
-  └─ 本插件第二层：turn 因 429 终结 → 等 Agent 变 idle → agent.followup('继续')
+  └─ 本插件第二层：turn 因 429 终结 → 等 Agent 变 idle → agent.followup('如果任务未完成，请继续执行')
 ```
 
 关键实现细节（改代码前请先读）：
 
 1. **一定先 `await next()`。** 这样无论插件和 `llm-retry` 谁先加载，行为都一致：内置的快速重试优先，
    我们只负责「它放弃之后」。
-2. **「继续」只能在 `idle` 时发。** `followup()` 在 `running` 阶段只会入队、不会唤醒驱动，消息会滞留到
+2. **续跑消息只能在 `idle` 时发。** `followup()` 在 `running` 阶段只会入队、不会唤醒驱动，消息会滞留到
    下一次用户输入。`turn/end` 一定先于 `agent/status(idle)` 提交，所以「先记录、后发送」是安全的。
 3. **不写自定义 session 事件。** 宿主只接受带 `ignorable: true` 的未知事件，而 `Session.append()`
    设不了这个标记。所以插件的状态全在内存里，热重载后归零（等于重新拿到预算）。
@@ -117,7 +117,7 @@ dsh plugin --profile desktop remove @local/dsh-model-auto-retry
     maxDelayMs: 300000
     jitterRatio: 0.2
     maxInLoopRetries: 6
-    continueText: '继续'
+    continueText: '如果任务未完成，请继续执行'
     maxContinues: 8
     resetWindowMs: 1800000
     includeSubagents: true
@@ -126,13 +126,13 @@ dsh plugin --profile desktop remove @local/dsh-model-auto-retry
 
 | 键 | 作用 | 什么时候改 |
 | --- | --- | --- |
-| `mode` | 恢复策略。`hybrid` 两层都开；`in-loop` 只原地重试（最安静）；`continue` 只做「继续」（最贴近人工行为）；`off` 关闭 | 想完全静默用 `in-loop`；想把「继续」留在聊天记录里当审计用 `continue` |
+| `mode` | 恢复策略。`hybrid` 两层都开；`in-loop` 只原地重试（最安静）；`continue` 只做中断后续跑（最贴近人工行为）；`off` 关闭 | 想完全静默用 `in-loop`；想把自动续跑留在聊天记录里当审计用 `continue` |
 | `rateLimitCodes` / `rateLimitStatuses` / `messagePattern` | 三重 429 判定，命中任一即算 | 换了适配器、失败对象里没有 `code`/`status` 时 |
 | `excludeCodes` | 永不自愈的错误类型 | 你更希望额度耗尽立刻停下时，把它加进来 |
 | `respectRetryAfter` | 优先用服务端 `Retry-After` | 一般不用动 |
 | `initialDelayMs` / `maxDelayMs` / `jitterRatio` | 退避曲线 | 额度是按分钟给的，调小；按小时给的，调大 `maxDelayMs` |
 | `maxInLoopRetries` | 单 step 最多接管几次 | 配额很紧时调大；想快速失败调 0 |
-| `continueText` | 注入的消息正文 | 换个说法，例如「请从中断处继续」 |
+| `continueText` | 注入的消息正文，默认「如果任务未完成，请继续执行」 | 想更短就改「继续」，想更明确就写清楚要在哪接着做 |
 | `maxContinues` / `resetWindowMs` | 续跑预算（滑动窗口） | 防止持续限流时无限续跑 |
 | `includeSubagents` | 子 Agent 是否也自愈 | 子 Agent 很多时关掉，避免并发放大 |
 | `continueSource` | `user` = 普通用户气泡；`notice` = 提示条 | 不想让会话看起来像「人打的继续」时用 `notice` |
@@ -144,7 +144,7 @@ dsh plugin --profile desktop remove @local/dsh-model-auto-retry
 ## 你会看到什么
 
 - `hybrid` / `in-loop`：聊天里**没有**额外消息，只有「这次请求慢了一点」。恢复过程写进宿主日志。
-- `hybrid` / `continue`：中断后聊天里出现一条内容为「继续」的用户消息（或提示条），随后 Agent 继续干活。
+- `hybrid` / `continue`：中断后聊天里出现一条内容为「如果任务未完成，请继续执行」的用户消息（或提示条），随后 Agent 继续干活。
 - 放弃时（预算用尽 / 非 429）：行为和没装插件完全一样 —— 报错、停下、等人处理。
 
 日志前缀统一是 `model-auto-retry:`，按它过滤即可：
@@ -152,7 +152,7 @@ dsh plugin --profile desktop remove @local/dsh-model-auto-retry
 ```
 model-auto-retry: agent "session-..." turn 1 step 1 命中限流（code=RATE_LIMIT, status=n/a），第 1/6 次原地重试，等待 5000ms
 model-auto-retry: agent "session-..." 的 turn 因限流终结（code=RATE_LIMIT），登记一次自动续跑
-model-auto-retry: agent "session-..." 已自动发送「继续」续跑
+model-auto-retry: agent "session-..." 已自动发送续跑消息「如果任务未完成，请继续执行」
 model-auto-retry: agent "session-..." 在 1800000ms 内已自动续跑 8 次，放弃续跑，保留错误等待人工处理
 ```
 
@@ -176,16 +176,16 @@ inbox 抢跑、预算耗尽、Agent 销毁。
 ### 端到端（可复现，全程在本目录的隔离环境里，不碰真实 profile）
 
 ```powershell
-# 1) 起假 429 服务：前 3 个请求返回 429，之后正常
+# 1) 起假 429 服务：前 3 个请求返回 429，之后正常（前台运行，另开一个终端做后面几步）
 node test/mock-429-server.mjs 8123 3
 
 # 2) 用一个隔离的 DSH_HOME 装本插件，避免污染真实配置
 $env:DSH_HOME = "D:\code\dsh-model-auto-retry\.e2e-home"
+$env:MOCK_API_KEY = "test-key"
 dsh plugin --profile headless add "D:\code\dsh-model-auto-retry\package"
 
 # 3) 跑一次 headless 任务（overlay 把默认模型指向本地假服务，内置重试压到 1 次）
-$env:MOCK_API_KEY = "test-key"
-dsh headless --patch .e2e-home\overlay.yml "reply with the single word: ok"
+dsh headless --patch test\e2e-overlay.yml "reply with the single word: ok"
 
 # 4) 看会话日志：应当只有 completed，没有 error
 node tools\read-session-log.mjs (Get-ChildItem .e2e-home\sessions -Recurse -File -Filter *.zstd |
@@ -195,9 +195,19 @@ node tools\read-session-log.mjs (Get-ChildItem .e2e-home\sessions -Recurse -File
 对照组（同一个假服务、同一个 prompt，只把插件 `mode` 设成 `off`）：
 
 ```powershell
-dsh headless --patch .e2e-home\overlay-control.yml "reply with the single word: ok"
+dsh headless --patch test\e2e-overlay-control.yml "reply with the single word: ok"
 # dsh: RATE_LIMIT: 429: {"message":"rps exhausted","type":"quota_exceeded_error","code":"8"}
 ```
+
+只验证第二层（`mode: continue`：中断后注入续跑消息，不做原地重试）：
+
+```powershell
+dsh headless --patch test\e2e-overlay-continue.yml "reply with the single word: ok"
+# 会话日志里应看到：turn/end error 一次 → USER PROMPTS 多出「如果任务未完成，请继续执行」→ turn/end completed
+```
+
+> 假服务记得换端口或先确认 8123 空闲，否则 `node` 会以 `EADDRINUSE` 直接退出，
+> 而残留的旧服务可能已经过了失败计数、全部返回 200，把结论带偏。
 
 本仓库实测结果：
 
@@ -205,9 +215,13 @@ dsh headless --patch .e2e-home\overlay-control.yml "reply with the single word: 
 | --- | --- | --- | --- |
 | `mode: off`（对照） | 3×429 | `maxRetries: 1` | `turn/end error`，CLI 退出码非 0，报 `RATE_LIMIT` |
 | `mode: hybrid`（本插件） | 3×429 | `maxRetries: 1` | `turn/end completed`，输出 `done`，退出码 0 |
+| `mode: continue` | 3×429 | `maxRetries: 1` | 先 `turn/end error`，随后注入「如果任务未完成，请继续执行」，新 turn `completed` |
 
-在插件开启的那次里，会话日志只有 **1 次** `llm/retry`（内置的）、**2 次** `assistant/attempt`，
+`hybrid` 那次：会话日志只有 **1 次** `llm/retry`（内置的）、**2 次** `assistant/attempt`，
 而假服务一共收到 **4 个**请求 —— 第 4 个正是插件在内置重试耗尽后发出的原地重试。
+
+`continue` 那次：假服务同样收到 4 个请求（第 4 个来自续跑后的新 turn），
+`USER PROMPTS` 是 `['reply with the single word: ok', '如果任务未完成，请继续执行']`。
 
 ---
 

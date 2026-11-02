@@ -326,7 +326,7 @@ function turnEndEvent(sessionId, reason) {
   return { type: 'turn/end', data: { turn: 1, reason } }
 }
 
-test('限流终结后，Agent 空闲时自动发送「继续」', () => {
+test('限流终结后，Agent 空闲时自动发送续跑消息', () => {
   const { agent, followed } = makeAgent()
   const harness = createHarness()
   harness.agents.set(agent.id, agent)
@@ -340,10 +340,21 @@ test('限流终结后，Agent 空闲时自动发送「继续」', () => {
 
   const [message] = followed
   assert.equal(message.role, 'user')
-  assert.equal(message.content[0].text, '继续')
+  assert.equal(message.content[0].text, '如果任务未完成，请继续执行')
   assert.equal(message.source.kind, 'user')
   assert.equal(typeof message.id, 'string')
   assert.ok(message.id.length > 0)
+})
+
+test('continueText 可覆盖默认正文', () => {
+  const { agent, followed } = makeAgent()
+  const harness = createHarness({ continueText: '接着做' })
+  harness.agents.set(agent.id, agent)
+
+  const session = { id: agent.id }
+  harness.emit('session/event', session, turnEndEvent(agent.id, { kind: 'error', error: rateLimitedFailure() }))
+  harness.emit('agent/status', { agent, status: 'idle' })
+  assert.equal(followed[0].content[0].text, '接着做')
 })
 
 test('continueSource: notice 时用提示条形态（不伪装成人打的）', () => {
@@ -358,6 +369,10 @@ test('continueSource: notice 时用提示条形态（不伪装成人打的）', 
   assert.equal(followed.length, 1)
   assert.equal(followed[0].source.kind, 'model-auto-retry')
   assert.equal(followed[0].source.form, 'notice')
+  // 提示条只放一行摘要，不再把长正文塞进 summary
+  assert.match(followed[0].source.summary, /429 限流：已自动续跑/)
+  // 发给模型的正文仍然是配置里的那一条
+  assert.equal(followed[0].content[0].text, '如果任务未完成，请继续执行')
 })
 
 test('非限流终结不续跑（鉴权失败必须人工处理）', () => {

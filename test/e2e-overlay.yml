@@ -1,0 +1,31 @@
+# 端到端验证用的 Loader 覆盖层（配合 test/mock-429-server.mjs）。
+#
+# 作用：把默认模型指向本地假 429 服务，并把内置重试压到 1 次，
+# 这样插件的第一层（原地重试）才有机会接管。
+#
+# 用法：
+#   node test/mock-429-server.mjs 8123 3
+#   $env:DSH_HOME = "<repo>\.e2e-home"; $env:MOCK_API_KEY = "test-key"
+#   dsh headless --patch test\e2e-overlay.yml "reply with the single word: ok"
+- id: llm-pi-ai
+  config:
+    providers:
+      mock:
+        displayName: mock
+        apiKeyEnv: MOCK_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8123/v1
+        retryPolicy:
+          mode: normal
+          maxRetries: 1
+          backoff:
+            initialDelayMs: 50
+            maxDelayMs: 200
+        models:
+          - id: mock-1
+            name: mock-1
+            contextWindow: 32768
+- id: agent-default-model
+  config:
+    provider: mock
+    model: mock-1

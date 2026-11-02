@@ -2,7 +2,7 @@
 
 让 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的 Agent 在模型请求被限流（HTTP 429）时**不中断**，无人值守也能把长任务跑完。
 
-> A DSH host plugin that keeps an agent alive through model rate limits: retries the failed request in place, then sends an automatic「继续」follow-up if retries run out.
+> A DSH host plugin that keeps an agent alive through model rate limits: retries the failed request in place, then sends an automatic "如果任务未完成，请继续执行" follow-up if retries run out.
 
 ## 解决什么问题
 
@@ -18,7 +18,7 @@ DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 provider 的 `maxRetrie
                      不能 → 轮到本插件
   └─ 第一层：是 429 吗？→ 按 Retry-After / 指数退避等待 → 返回 { kind: 'retry' }
                          → 循环原地重试，Agent 不中断
-  └─ 第二层：turn 因 429 终结 → 等 Agent 变 idle → agent.followup('继续')
+  └─ 第二层：turn 因 429 终结 → 等 Agent 变 idle → agent.followup('如果任务未完成，请继续执行')
 ```
 
 两层都只在 **429 / `RATE_LIMIT`** 上生效；配额耗尽、鉴权失败等「重试也不会变好」的错误保持原样，交人工处理。
@@ -108,12 +108,12 @@ git pull
     maxInLoopRetries: 6       # 第一层：每个 step 最多接管几次
     maxContinues: 8           # 第二层：单 Agent 每个窗口最多续跑几次
     resetWindowMs: 1800000    # 窗口长度（30min）
-    continueText: '继续'
+    continueText: '如果任务未完成，请继续执行'   # 第二层注入的消息正文
 ```
 
 | mode | 行为 | 适合 |
 | --- | --- | --- |
-| `hybrid`（默认） | 先静默原地重试，预算用尽后自动发「继续」 | 无人值守长任务 |
+| `hybrid`（默认） | 先静默原地重试，预算用尽后自动发续跑消息 | 无人值守长任务 |
 | `in-loop` | 只原地重试，永不注入消息 | 有人盯着、不想污染对话历史 |
 | `continue` | 只做「中断后发继续」，每次恢复都留痕 | 需要审计「被自动救了几次」 |
 | `off` | 全关，行为与未安装一致 | 应急止血 |

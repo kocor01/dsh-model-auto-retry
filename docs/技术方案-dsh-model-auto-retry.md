@@ -2,7 +2,7 @@
 
 > 状态：草案 v1（待评审）
 > 目标读者：DSH 使用者 / 插件实现者
-> 结论先行：**推荐「双层恢复」——第一层在 `agent/request-error` 处接管 429 原地重试，第二层在重试耗尽、Agent 已中断后自动注入「继续」**。只做第二层也能满足原始需求，但第一层体验更好、更省 token。
+> 结论先行：**推荐「双层恢复」——第一层在 `agent/request-error` 处接管 429 原地重试，第二层在重试耗尽、Agent 已中断后自动注入「如果任务未完成，请继续执行」**。只做第二层也能满足原始需求，但第一层体验更好、更省 token。
 
 ---
 
@@ -56,7 +56,7 @@ turn/end         {"kind":"error",
 ### 目标
 
 1. 429 / `RATE_LIMIT` 导致的模型请求失败**不再中断 Agent**（在限额场景下无人值守跑完长任务）。
-2. 保留用户描述的行为作为兜底：重试确实耗尽、Agent 已中断时，**自动发送「继续」**让 Agent 继续执行。
+2. 保留用户描述的行为作为兜底：重试确实耗尽、Agent 已中断时，**自动发送「如果任务未完成，请继续执行」**让 Agent 继续执行。
 3. 有界：重试次数、总时长、间隔都有上限，绝不会变成静默死循环。
 4. 可观测：日志能看出「第几次、等多久、为什么放弃」。
 5. 可关闭、可调参，且参数放在 profile 的 `cordis.patch.yml` 里，升级不丢。
@@ -97,12 +97,12 @@ turn/end         {"kind":"error",
 | --- | --- | --- | --- | --- | --- |
 | 0. 纯配置 `mode: always` | 内置重试无限循环 | 否 | 否 | 无 | 所有错误一起重试，可能永久卡死 |
 | A. 请求期接管 | `agent/request-error` 返回 `{kind:'retry'}` | 否 | 否 | 无 | 长等待期间 UI 一直显示 running |
-| B. 中断后续跑 | `turn/end(error)` + `agent/status(idle)` → `followup('继续')` | 是（一次） | 是（聊天里出现「继续」） | 多一轮完整请求 | 需要精确的时序与去重 |
+| B. 中断后续跑 | `turn/end(error)` + `agent/status(idle)` → `followup('如果任务未完成，请继续执行')` | 是（一次） | 是（聊天里出现续跑消息） | 多一轮完整请求 | 需要精确的时序与去重 |
 | **A+B（推荐）** | 先 A 后 B | 极端情况下才中断 | 通常静默 | 仅 B 触发时 | 需要统一的计数器与上限 |
 
 **推荐 A+B**：
 - 正常限流（rps/tpm 打满）由 A 静默扛过，用户感知为「慢了一点」；
-- A 达到自己的上限、或用户把 `mode` 设为 `continue` 时，退回 B，按原始需求注入「继续」；
+- A 达到自己的上限、或用户把 `mode` 设为 `continue` 时，退回 B，按原始需求注入续跑消息；
 - 两层共享同一套判定与预算，不会互相打架。
 
 ---
@@ -122,7 +122,7 @@ turn/end         {"kind":"error",
                                      │
    agent/status(idle) ──────▶ 预算够 & inbox 空 & Agent 存活
                                      ▼
-                          Agent.followup(userMessage('继续'))
+                          Agent.followup(userMessage('如果任务未完成，请继续执行'))
 ```
 
 时序保证：`turn/end` 一定先于 `agent/status(idle)` 提交（`turn()` 的 `finally` 写 `turn/end`，`kick()` 的 `finally` 才切 idle），因此第二层的两个监听不会出现「先 idle 后记录」的竞态。
@@ -216,7 +216,11 @@ const active    = new Set()   // 进行中的等待，卸载时 drain
 
 任一超限：打 `warn` 日志 → 放行原错误 → 行为与今天完全一致（人工介入），绝不会静默吞掉错误。
 
-### 6.5 第二层：注入「继续」
+### 6.5 第二层：注入续跑消息
+
+正文默认「如果任务未完成，请继续执行」。相比只写「继续」，带上「未完成」这个前提有两个好处：
+模型不会把续跑当成一条与当前任务无关的新指令；任务其实已经完成时，它可以直接收尾而不是硬造新工作。
+正文由 `continueText` 配置，想更短就改回「继续」。
 
 ```js
 // 记录终结 429（持久事实，权威）
@@ -242,7 +246,7 @@ ctx.on('agent/status', ({ agent, status }) => {
 })
 ```
 
-「继续」消息按真实用户消息的形状构造（无需 import 任何包）：
+续跑消息按真实用户消息的形状构造（无需 import 任何包）：
 
 ```js
 function continueMessage(text) {
@@ -304,7 +308,7 @@ function continueMessage(text) {
         maxDelayMs: 300000        # 5min
         jitterRatio: 0.2
         maxInLoopRetries: 6       # 第一层每个 step 的上限
-        continueText: '继续'
+        continueText: '如果任务未完成，请继续执行'
         maxContinues: 8           # 第二层每个 Agent 的上限
         resetWindowMs: 1800000    # 30min 后预算归零
         includeSubagents: true
@@ -429,12 +433,12 @@ D:\code\dsh-model-auto-retry\
    - **没有** `turn/end reason.kind = 'error'`；
    - 最终有 `assistant/message`；
    - 日志出现 `model-auto-retry: ... 原地重试`。
-4. 切换 `mode: continue`、`maxRetries: 0`，重复：断言 `turn/end error` 出现一次后，紧接着出现 `user/message`（内容「继续」）与新的 `turn/start`，Agent 最终完成；
+4. 切换 `mode: continue`、`maxRetries: 0`，重复：断言 `turn/end error` 出现一次后，紧接着出现 `user/message`（内容「如果任务未完成，请继续执行」）与新的 `turn/start`，Agent 最终完成；
 5. 还原 profile 配置（务必恢复，不能留下测试 provider）。
 
 ### 10.3 回归
 
-- 非 429 失败（如 401/403）行为不变：仍中断、不注入「继续」；
+- 非 429 失败（如 401/403）行为不变：仍中断、不注入续跑消息；
 - 用户点「停止」时立即结束等待，不产生额外 turn；
 - 插件 `mode: off` 时零行为差异；
 - 卸载插件不残留悬挂 Promise（`active` 集合为空）。

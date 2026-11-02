@@ -1,0 +1,29 @@
+# 只验证第二层（中断后注入续跑消息）的覆盖层：mode=continue。
+#
+# 与 e2e-overlay.yml 用同一个假 429 服务，但插件不做原地重试，
+# 所以会看到：turn/end error → 自动注入「如果任务未完成，请继续执行」→ 新 turn 完成。
+- id: llm-pi-ai
+  config:
+    providers:
+      mock:
+        displayName: mock
+        apiKeyEnv: MOCK_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8123/v1
+        retryPolicy:
+          mode: normal
+          maxRetries: 1
+          backoff:
+            initialDelayMs: 50
+            maxDelayMs: 200
+        models:
+          - id: mock-1
+            name: mock-1
+            contextWindow: 32768
+- id: agent-default-model
+  config:
+    provider: mock
+    model: mock-1
+- id: model-auto-retry
+  config:
+    mode: continue

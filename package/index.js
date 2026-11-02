@@ -21,7 +21,9 @@
  * 第二层（中断后续跑，`session/event` + `agent/status`）
  *   第一层达到自己的上限、或用户把 mode 设成 `continue` 时，错误会照常终结这一次
  *   turn。插件从持久事实 `turn/end.reason.error` 里认出 429，然后在 Agent 真正回到
- *   `idle` 之后调用 `agent.followup()` 注入一条内容为「继续」的用户消息，把任务接上。
+ *   `idle` 之后调用 `agent.followup()` 注入一条续跑消息，把任务接上。正文默认是
+ *   「如果任务未完成，请继续执行」（见配置 `continueText`）——带上「未完成」这个前提，
+ *   模型才不会把续跑当成一条新的、与当前任务无关的指令。
  *
  * ## 两个不能踩的时序/格式约束
  *
@@ -115,8 +117,8 @@ const DEFAULTS = Object.freeze({
   jitterRatio: 0.2,
   /** 第一层：同一个 step 内最多接管多少次。0 表示完全交给第二层。 */
   maxInLoopRetries: 6,
-  /** 第二层注入的消息正文。用户需求里写的就是「继续」。 */
-  continueText: '继续',
+  /** 第二层注入的消息正文：带「未完成」前提，避免模型把续跑当成新的用户指令。 */
+  continueText: '如果任务未完成，请继续执行',
   /** 第二层：同一 Agent 在 resetWindowMs 窗口内最多续跑多少次。 */
   maxContinues: 8,
   /** 续跑预算的滑动窗口长度。 */
@@ -553,7 +555,7 @@ function onIdle(payload, deps) {
 
   try {
     followup.call(agent, continueMessage(config))
-    ctx.logger.info(`model-auto-retry: agent "${agent.id}" 已自动发送「${config.continueText}」续跑`)
+    ctx.logger.info(`model-auto-retry: agent "${agent.id}" 已自动发送续跑消息「${config.continueText}」`)
   } catch (error) {
     // 发送失败（例如刚好被销毁）不能让插件自身崩掉，也不重试：日志足够定位。
     ctx.logger.warn(`model-auto-retry: agent "${agent.id}" 自动续跑失败：${renderError(error)}`)
@@ -627,7 +629,7 @@ function continueMessage(config) {
       source: {
         kind: 'model-auto-retry',
         form: 'notice',
-        summary: `429 限流：已自动续跑（${config.continueText}）`,
+        summary: '429 限流：已自动续跑',
       },
     }
   }
