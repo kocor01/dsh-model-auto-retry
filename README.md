@@ -8,7 +8,7 @@
 
 ## 解决什么问题
 
-DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 provider 的 `maxRetries` 跑完后，`@deepseek-ai/dsh-agent-loop` 会把失败升级成终结错误：写 `turn/end { reason: { kind: 'error' } }`、发 `agent/error`、Agent 回到 `idle`。任务停在半路，必须人工再打一句「继续」。
+DSH 的内置重试（`@deepseek-ai/dsh-llm-retry`）把 provider 的 `maxRetries` 跑完后，`@deepseek-ai/dsh-agent-loop` 会把失败升级成终结错误：写 `turn/end { reason: { kind: 'error' } }`、发 `agent/error`、Agent 回到 `idle`。任务停在半路，必须人工再发一条消息才能恢复。
 
 限额场景下这件事发生得很频繁 —— 实测某个会话里有 **744 次** `llm/retry`、**7 次** `turn/end` 为 error，全都是 429。
 
@@ -121,10 +121,10 @@ dsh plugin --profile desktop remove @local/dsh-model-auto-retry
 | `respectRetryAfter` | 优先用服务端 `Retry-After` | 一般不用动 |
 | `initialDelayMs` / `maxDelayMs` / `jitterRatio` | 退避曲线 | 额度是按分钟给的，调小；按小时给的，调大 `maxDelayMs` |
 | `maxInLoopRetries` | 单 step 最多接管几次 | 配额很紧时调大；想快速失败调 0 |
-| `continueText` | 注入的消息正文，默认「如果任务未完成，请继续执行」 | 想更短就改「继续」，想更明确就写清楚要在哪接着做 |
+| `continueText` | 注入的消息正文，默认「如果任务未完成，请继续执行」 | 想更短就自行改写，想更明确就写清楚要在哪接着做 |
 | `maxContinues` / `resetWindowMs` | 续跑预算（滑动窗口） | 防止持续限流时无限续跑 |
 | `includeSubagents` | 子 Agent 是否也自愈 | 子 Agent 很多时关掉，避免并发放大 |
-| `continueSource` | `user` = 普通用户气泡；`notice` = 提示条 | 不想让会话看起来像「人打的继续」时用 `notice` |
+| `continueSource` | `user` = 普通用户气泡；`notice` = 提示条 | 不想让会话看起来像「人打的续跑消息」时用 `notice` |
 
 配置写错（未知键、类型不对、正则非法）会在**激活期**直接报错，不会有「装了但没生效」的静默状态。
 

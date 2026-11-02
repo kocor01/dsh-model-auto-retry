@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Model Rate-Limit Auto-Retry",
-    "description": "Keeps an agent running through model rate limits (HTTP 429): retries the failed request in place, then sends an automatic 继续 follow-up if retries run out."
+    "description": "Keeps an agent running through model rate limits (HTTP 429): retries the failed request in place, then sends a follow-up (\"如果任务未完成，请继续执行\") if retries run out."
   }
 }

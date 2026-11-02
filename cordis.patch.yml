@@ -8,5 +8,5 @@
     - id: model-auto-retry
       name: '@local/dsh-model-auto-retry'
       config:
-        # hybrid：先原地重试（不中断），达到上限后再自动发「继续」。
+        # hybrid：先原地重试（不中断），达到上限后再自动补发续跑消息。
         mode: hybrid

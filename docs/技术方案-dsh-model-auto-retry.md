@@ -16,7 +16,7 @@ DSH 对模型请求失败有内置重试（`@deepseek-ai/dsh-llm-retry`）。达
 2. `turn()` 捕获后写入 `turn/end { reason: { kind: 'error', error } }`，并触发 `agent/error`；
 3. `kick()` 收尾，Agent 状态回到 `idle`，驱动退出。
 
-结果：Agent 停住，必须人工输入「继续」才能恢复。额度/限流（HTTP 429）是最常见的触发原因。
+结果：Agent 停住，必须人工再发一条消息才能恢复。额度/限流（HTTP 429）是最常见的触发原因。
 
 ### 1.2 真实日志证据（本机 `~/.dsh/sessions` 解压后统计）
 
@@ -47,7 +47,7 @@ turn/end         {"kind":"error",
       backoff: { initialDelayMs: 5000, maxDelayMs: 60000 }
 ```
 
-优点：不动代码。缺点：**对所有错误无限重试**（鉴权失败、上下文超限、参数错误会永远卡住），没有上限、没有可见的「继续」动作、重试间隔最大只到 `maxDelayMs`（默认 10s，长时额度恢复等不到）。所以它只能作为临时止血，不能替代本插件。
+优点：不动代码。缺点：**对所有错误无限重试**（鉴权失败、上下文超限、参数错误会永远卡住），没有上限、没有可见的续跑动作、重试间隔最大只到 `maxDelayMs`（默认 10s，长时额度恢复等不到）。所以它只能作为临时止血，不能替代本插件。
 
 ---
 
@@ -78,7 +78,7 @@ turn/end         {"kind":"error",
 | `agent/error` | emit | `{ agent, turn, step, error }` | 辅助判定（可选） |
 | `agent/status` | emit | `{ agent, status: 'idle' \| 'running' }` | **第二层**：等 Agent 真正空闲再注入 |
 | `session/event` | emit | `(session, event)`，`turn/end.reason` 是持久事实 | 判定「终结 429」的权威来源 |
-| `Agent.followup(message)` | 方法 | 写入 inbox 的 `next-turn` 并唤醒驱动 | 发送「继续」 |
+| `Agent.followup(message)` | 方法 | 写入 inbox 的 `next-turn` 并唤醒驱动 | 发送续跑消息 |
 | `Agent.inbox.hasPending` | 属性 | 是否有待处理输入 | 防止与他人输入打架 |
 | `ctx.agents.get(id)` | 方法 | 存活判定 | 防止对已销毁 Agent 操作 |
 | `LlmFailure` | 类型 | `{ message, code, status?, providerRetryAfterMs?, ... }` | 判定与退避输入 |
@@ -203,7 +203,7 @@ function nextDelay(failure, attempt, cfg) {
 
 ```js
 const stepState = new Map()   // agentId -> { turn, step, attempt }   每次 (turn,step) 变化即归零
-const pending   = new Map()   // sessionId -> { failure, at }         待注入「继续」的终结 429
+const pending   = new Map()   // sessionId -> { failure, at }         待注入续跑消息的终结 429
 const budget    = new Map()   // agentId -> { count, since }          第二层预算
 const active    = new Set()   // 进行中的等待，卸载时 drain
 ```
@@ -211,16 +211,16 @@ const active    = new Set()   // 进行中的等待，卸载时 drain
 上限三级：
 
 1. `maxInLoopRetries`（默认 6）：单个 step 内第一层最多接管次数；
-2. `maxContinues`（默认 8）：单个 Agent 在 `resetWindowMs`（默认 30 分钟）内的「继续」次数；
+2. `maxContinues`（默认 8）：单个 Agent 在 `resetWindowMs`（默认 30 分钟）内的续跑次数；
 3. `maxDelayMs` 与 `respectRetryAfter`：单次等待上限。
 
 任一超限：打 `warn` 日志 → 放行原错误 → 行为与今天完全一致（人工介入），绝不会静默吞掉错误。
 
 ### 6.5 第二层：注入续跑消息
 
-正文默认「如果任务未完成，请继续执行」。相比只写「继续」，带上「未完成」这个前提有两个好处：
+正文默认「如果任务未完成，请继续执行」。带上「未完成」这个前提有两个好处：
 模型不会把续跑当成一条与当前任务无关的新指令；任务其实已经完成时，它可以直接收尾而不是硬造新工作。
-正文由 `continueText` 配置，想更短就改回「继续」。
+正文由 `continueText` 配置，要更短或更具体直接改写这个值即可。
 
 ```js
 // 记录终结 429（持久事实，权威）
@@ -265,7 +265,7 @@ function continueMessage(text) {
 
 > 实现时需二次确认 `UserMessage['source']` 在 `@deepseek-ai/dsh-session` 中的字段要求（实测日志中真实用户消息为 `{"kind":"user","rpcId":"...","clientTimeZone":"Asia/Shanghai"}`，按此形状最安全）。
 
-可选 `continueSource: 'notice'`：改用 `{ kind:'model-auto-retry', form:'notice', summary:'429 限流，已自动继续' }`，聊天里显示为提示条而不是伪装成用户输入，语义更诚实（v1 默认 `user`，符合原始需求）。
+可选 `continueSource: 'notice'`：改用 `{ kind:'model-auto-retry', form:'notice', summary:'429 限流：已自动续跑' }`，聊天里显示为提示条而不是伪装成用户输入，语义更诚实（v1 默认 `user`，符合原始需求）。
 
 ### 6.6 与内置 `llm-retry` 的协作
 
@@ -445,7 +445,7 @@ D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
 
 ### 10.4 线上观测
 
-跑一周后统计：`llm/retry` 次数与 `turn/end error` 比例、人工「继续」次数是否归零。对比基线（当前 7 次/会话的 error 中断）。
+跑一周后统计：`llm/retry` 次数与 `turn/end error` 比例、人工补发消息的次数是否归零。对比基线（当前 7 次/会话的 error 中断）。
 
 ---
 
@@ -459,7 +459,7 @@ D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
 | 长等待期间 UI 无反馈 | 用户以为卡死 | 日志记录 + README 说明；v2 可在聊天区加提示条 |
 | 与内置重试顺序耦合 | 行为不确定 | 永远先 `next()`，只在放弃后接管 |
 | 注入消息与他人输入冲突 | 消息滞留/重复 | `inbox.hasPending` 检查 + 预算去重 |
-| 伪造成用户消息 | 会话记录看起来像人打的「继续」 | 提供 `continueSource: 'notice'` 诚实渲染 |
+| 伪造成用户消息 | 会话记录看起来像人打的续跑消息 | 提供 `continueSource: 'notice'` 诚实渲染 |
 | 子 Agent 放大重试 | 并发翻倍 | `includeSubagents` 开关 |
 | 无法解析 dsh 包 | 插件装不上/启动失败 | 零 import，只用 Node 内置（`node:crypto`） |
 | 插件卸载时仍在等待 | 悬挂 Promise / 热重载泄漏 | 与官方 `llm-retry` 相同的 lifetime abort + drain |
@@ -471,7 +471,7 @@ D:\code\dsh-model-auto-retry\      ← 仓库根就是插件包
 | 阶段 | 内容 | 产出 |
 | --- | --- | --- |
 | M1 | 骨架 + 判定 + 第一层 + 单测 | 可 `node --check` 的 `index.js`，单测全绿 |
-| M2 | 第二层「继续」+ 预算 | 完整两段恢复 |
+| M2 | 第二层续跑 + 预算 | 完整两段恢复 |
 | M3 | mock 429 端到端（hybrid / continue 两种模式） | 会话日志断言通过 |
 | M4 | 安装到 `desktop` profile + 真实限流观察 | 一行插件记录 + 一次真实 429 恢复验证 |
 | M5 | README（安装/调参/排障）+ 默认可行性回收 | 用户可自助使用 |

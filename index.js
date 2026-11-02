@@ -6,7 +6,7 @@
  * DSH 对失败的模型请求有内置重试（`@deepseek-ai/dsh-llm-retry`）。重试次数用完后，
  * `@deepseek-ai/dsh-agent-loop` 会把这次失败升级成终结错误：写入
  * `turn/end { reason: { kind: 'error' } }`、发出 `agent/error`、Agent 回到 `idle`。
- * 结果就是任务停在半路，必须人工再打一句「继续」。真实环境下最常见的触发原因
+ * 结果就是任务停在半路，必须人工再发一条消息才能恢复。真实环境下最常见的触发原因
  * 就是额度/限流（HTTP 429）。
  *
  * ## 恢复策略：两层
@@ -27,7 +27,7 @@
  *
  * ## 两个不能踩的时序/格式约束
  *
- * 1. **必须等 `idle` 再发「继续」。** `followup()` 在 Agent `running` 阶段只会把消息
+ * 1. **必须等 `idle` 再发续跑消息。** `followup()` 在 Agent `running` 阶段只会把消息
  *    放进 `next-turn` 队列，而 `wakeDriver()` 只在 `idle` 时真正启动驱动；如果在
  *    `running` 阶段插入，消息会滞留到下一次用户输入才被捡起来。
  *    好消息是 `turn/end` 一定先于 `agent/status(idle)` 提交（前者在 `turn()` 的
@@ -125,7 +125,7 @@ const DEFAULTS = Object.freeze({
   resetWindowMs: 1800000,
   /** 是否对子 Agent 也生效。 */
   includeSubagents: true,
-  /** 「继续」消息的渲染形态：user = 普通用户气泡；notice = 提示条（不伪装成人打的）。 */
+  /** 续跑消息的渲染形态：user = 普通用户气泡；notice = 提示条（不伪装成人打的）。 */
   continueSource: 'user',
 })
 
@@ -475,7 +475,7 @@ async function recoverInLoop(payload, next, deps) {
  * 用 `turn/end` 而不是 `agent/error` 作权威来源：前者是持久事实，字段形状与
  * `llm-retry` 的重试记录一致；后者只是过程通知。
  *
- * 任何一次非错误的 turn 结束都会清掉登记 —— 说明会话自己走通了，不该再补「继续」。
+ * 任何一次非错误的 turn 结束都会清掉登记 —— 说明会话自己走通了，不该再补续跑消息。
  *
  * @param {object} session - 会话对象。
  * @param {{type: string, data?: any}} event - session/event 的事件。
@@ -504,7 +504,7 @@ function onTurnEnd(session, event, deps) {
 }
 
 /**
- * Agent 回到 idle 时，如果它上一轮是被限流打断的，就注入「继续」。
+ * Agent 回到 idle 时，如果它上一轮是被限流打断的，就注入续跑消息。
  *
  * 发送前的五道闸门，任何一道不满足都放弃（并留下日志），保证不会和用户输入抢跑、
  * 不会对已销毁的 Agent 操作、不会无限续跑：
@@ -532,7 +532,7 @@ function onIdle(payload, deps) {
   // 闸门 3：子 Agent 是否也参与（默认参与）。
   if (!config.includeSubagents && isSubagentAgent(ctx, agent)) return
 
-  // 闸门 4：用户可能已经在错误提示后自己打了「继续」，此时别再补一条。
+  // 闸门 4：用户可能已经在错误提示后自己补了一条消息，此时别再补一条。
   if (agent.inbox?.hasPending === true) {
     ctx.logger.info(`model-auto-retry: agent "${agent.id}" 的 inbox 已有待处理输入，跳过自动续跑`)
     return
@@ -607,7 +607,7 @@ function takeContinueBudget(budget, agentId, config, now) {
 }
 
 /**
- * 构造要注入的「继续」消息。
+ * 构造要注入的续跑消息。
  *
  * 不 import `@deepseek-ai/dsh-llm` 的 `createUserMessage`：它只做了
  * `{ role: 'user', ...input, id: brandString(uuid) }` 这一件事，而 brand 只是类型层
@@ -663,7 +663,7 @@ function localTimeZone() {
  * 注册的监听器：
  *   - `agent/request-error` —— 第一层（mode = hybrid | in-loop）
  *   - `session/event`       —— 第二层：记录终结的限流错误（mode = hybrid | continue）
- *   - `agent/status`        —— 第二层：idle 时注入「继续」（mode = hybrid | continue）
+ *   - `agent/status`        —— 第二层：idle 时注入续跑消息（mode = hybrid | continue）
  *   - `agent/disposed`      —— 清理该 Agent 的全部内存状态
  *
  * 卸载时先注销监听、再 abort 生命周期信号（打断所有进行中的等待）、最后等待
